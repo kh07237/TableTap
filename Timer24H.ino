@@ -101,8 +101,8 @@ void Timestr2TimeInt(String sttime,uint8_t & hh,uint8_t & mm)
     }
 
     if(colonpos == -1){
-      hh = 0;
-      mm = 0;
+      hh = 99;
+      mm = 99;
       return;
     }
 
@@ -124,6 +124,9 @@ String TimeInt2Timestr(uint8_t hh,uint8_t mm)
 {
   char buf[10]; 
   String sthhmm;
+  if(hh==99 || mm==99){
+    return "----";
+  }
   sprintf(buf,"%02d:%02d",hh,mm);
   sthhmm = buf;
   //Serial.print("sthhmm:"); Serial.println(sthhmm);
@@ -144,7 +147,9 @@ void handleRoot() {
     if (val == "2") {
         SetMode(MODE_EVER_ON);
     }else if (val == "1") {
-        SetMode(MODE_TIMER);
+        SetMode(MODE_CONT_OFF);
+    }else if (val == "4") {
+        SetMode(MODE_CONT_ON);
     }else if (val == "0") {
         SetMode(MODE_EVER_OFF);
     }else if (val == "3") {
@@ -215,7 +220,6 @@ void handleRoot() {
   </head>\n\
   <body style=\"font-family: sans-serif; background-color: #ffeeaa ;\" >\n\
    <h1>タイマー設定</h1>\n\
-   <p>\n\
       <form action='' method='post'>\n\
         <p> :                         ON時刻　　　　　　　OFF時刻　    </br>\n\
             1：<input type='text' name='on_time1' value="+on_time[0] +" style='width:100px'>\n\
@@ -229,9 +233,12 @@ void handleRoot() {
             スリープ:<input type='text' name='sleep_time' value="+sleep_time +" style='width:100px'> 分</p>\n\
         <p><input type='submit' value=' 設定 '>\n\
         <input type='reset' value='キャンセル'></p>\n\
-        <p><button name='mode' value='2' style='width:100px;height:50px'>ON</button>\n\
-        <button name='mode' value='0' style='width:100px;height:50px'>OFF</button></br></p>\n\
-        <button name='mode' value='1' style='width:100px;height:50px'>タイマー</button>\n\
+   <h1>モード</h1>\n\
+   <p>\n\
+        <p><button name='mode' value='2' style='width:100px;height:50px'>常時ON</button>\n\
+        <button name='mode' value='0' style='width:100px;height:50px'>常時OFF</button></br></p>\n\
+        <p><button name='mode' value='4' style='width:100px;height:50px'>タイマー</br>(ONで開始)</button>\n\
+        <button name='mode' value='1' style='width:100px;height:50px'>タイマー</br>(OFFで開始)</button></br></P>\n\
         <button name='mode' value='3' style='width:100px;height:50px'>スリープ</button>\n\
       </form>\n\
     </p>\n\
@@ -318,16 +325,20 @@ server.on("/", handleRoot);
   xTaskCreatePinnedToCore(ledtask, "ledtask", 4096, NULL, 1, NULL, 0);
 }
 
+uint8_t curennt_output_status = 0;//現在の出力状態 電源投入時、リレーはOFF。
+
 void ctrl_output(uint8_t c)
 {
-  if(c==1){
+  if(c==1 && curennt_output_status == 0){
     Serial.println("Output ON");
     digitalWrite(25,1);
+    curennt_output_status = 1;
   }
-  if(c==0)
+  if(c==0 && curennt_output_status == 1)
   {
     Serial.println("Output OFF");
     digitalWrite(25,0);
+    curennt_output_status = 0;
   }
 }
 
@@ -348,7 +359,9 @@ void SetMode(uint8_t mode)
       Serial.print("sleep_count:");Serial.println(sleep_count);
       break;
     case MODE_CONT_ON:
-      set_led_mode(LED_BLINK_RED_BLUE);
+      timer_state = 1;
+      ctrl_output(1);
+      set_led_mode(LED_BLUE);
       break;
     case MODE_TIMER:
       if(timer_state == 0){
@@ -360,6 +373,8 @@ void SetMode(uint8_t mode)
       }
       break;
     case MODE_CONT_OFF:
+      timer_state = 0;
+      ctrl_output(0);
       set_led_mode(LED_SOMETIME_BLUE2);
       break;
     case MODE_EVER_OFF:
